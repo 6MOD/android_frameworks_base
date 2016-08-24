@@ -193,7 +193,7 @@ public class DozeService extends DreamService implements SensorEventListener {
         if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
             float distance = event.values[0];
             boolean active = (distance >= mProximitySensor.getMaximumRange() && !mFirst);
-            requestPulse(active);
+            requestPulse(active, true);
             mFirst = false;
         }
     }
@@ -221,8 +221,24 @@ public class DozeService extends DreamService implements SensorEventListener {
         mSensors.unregisterListener(this);
     }
 
-    private void requestPulse(boolean active) {
+    private void requestPulse(boolean active, boolean asensor) {
         if (!active) return;
+
+        // perform b proximity check
+        if (!asensor) {
+            new NotificationProximityCheck() {
+                @Override
+                public void onProximityResult() {
+                    showDozeing();
+                }
+            }.check();
+            return;
+        }
+
+        showDozeing();
+    }
+
+    private void showDozeing() {
         mWakeLock.acquire();
         mPulsing = true;
         continuePulsing(DozeLog.PULSE_REASON_SENSOR_SIGMOTION);
@@ -341,7 +357,7 @@ public class DozeService extends DreamService implements SensorEventListener {
         mNotificationPulseTime = notificationTimeMs;
         if (pulseImmediately) {
             DozeLog.traceNotificationPulse(0);
-            requestPulse(true);
+            requestPulse(true, false);
         }
         // schedule the rest of the pulses
         rescheduleNotificationPulse(true /*predicate*/);
@@ -391,13 +407,13 @@ public class DozeService extends DreamService implements SensorEventListener {
         public void onReceive(Context context, Intent intent) {
             if (PULSE_ACTION.equals(intent.getAction())) {
                 if (DEBUG) Log.d(mTag, "Received pulse intent");
-                requestPulse(true);
+                requestPulse(true, false);
             }
             if (NOTIFICATION_PULSE_ACTION.equals(intent.getAction())) {
                 final long instance = intent.getLongExtra(EXTRA_INSTANCE, -1);
                 if (DEBUG) Log.d(mTag, "Received notification pulse intent instance=" + instance);
                 DozeLog.traceNotificationPulse(instance);
-                requestPulse(true);
+                requestPulse(true, false);
                 rescheduleNotificationPulse(mNotificationLightOn);
             }
             if (UiModeManager.ACTION_ENTER_CAR_MODE.equals(intent.getAction())) {
@@ -440,4 +456,27 @@ public class DozeService extends DreamService implements SensorEventListener {
             }
         }
     };
+
+    private abstract class NotificationProximityCheck implements SensorEventListener {
+        abstract public void onProximityResult();
+
+        public void check() {
+            final Sensor sensor = mSensors.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+            mSensors.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
+
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
+                float distance = event.values[0];
+                if (distance >= mProximitySensor.getMaximumRange()) {
+                    onProximityResult();
+                }
+                mSensors.unregisterListener(this);
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+    }
 }
