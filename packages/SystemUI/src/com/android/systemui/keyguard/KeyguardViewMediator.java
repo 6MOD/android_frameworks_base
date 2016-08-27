@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
+ * Copyright (C) 2016 The 6 MOD Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +34,10 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.UserInfo;
 import android.database.ContentObserver;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.media.AudioManager;
 import android.media.SoundPool;
 import android.os.Bundle;
@@ -133,7 +138,7 @@ import static android.provider.Settings.System.SCREEN_OFF_TIMEOUT;
  * directly to the keyguard UI is posted to a {@link android.os.Handler} to ensure it is taken on the UI
  * thread of the keyguard.
  */
-public class KeyguardViewMediator extends SystemUI {
+public class KeyguardViewMediator extends SystemUI implements SensorEventListener {
     private static final int KEYGUARD_DISPLAY_TIMEOUT_DELAY_DEFAULT = 30000;
     private static final long KEYGUARD_DONE_PENDING_TIMEOUT_MS = 3000;
 
@@ -354,6 +359,9 @@ public class KeyguardViewMediator extends SystemUI {
 
     private LockscreenEnabledSettingsObserver mSettingsObserver;
     private PhoneStatusBar mStatusBar;
+
+    public SensorManager mSensors;
+    public Sensor mProximitySensor;
 
     public static class LockscreenEnabledSettingsObserver extends UserContentObserver {
 
@@ -631,6 +639,9 @@ public class KeyguardViewMediator extends SystemUI {
         mPM = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
         mWM = WindowManagerGlobal.getWindowManagerService();
         mTrustManager = (TrustManager) mContext.getSystemService(Context.TRUST_SERVICE);
+
+        mSensors = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
+        mProximitySensor = mSensors.getDefaultSensor(Sensor.TYPE_PROXIMITY);
 
         mShowKeyguardWakeLock = mPM.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "show keyguard");
         mShowKeyguardWakeLock.setReferenceCounted(false);
@@ -949,6 +960,7 @@ public class KeyguardViewMediator extends SystemUI {
                     && mLockPatternUtils.isSecure(KeyguardUpdateMonitor.getCurrentUser())) {
                 doKeyguardLaterLocked();
             }
+            mSensors.registerListener(this, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
         }
     }
 
@@ -962,6 +974,17 @@ public class KeyguardViewMediator extends SystemUI {
             }
         }
     }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
+            float distance = event.values[0];
+            mStatusBar.mNotificationPanel.onProximityResult(distance < mProximitySensor.getMaximumRange() && distance == 0);
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
     /**
      * Set the internal keyguard enabled state. This allows SystemUI to disable the lockscreen,
@@ -1448,6 +1471,7 @@ public class KeyguardViewMediator extends SystemUI {
         EventLog.writeEvent(70000, 2);
         Message msg = mHandler.obtainMessage(KEYGUARD_DONE, authenticated ? 1 : 0);
         mHandler.sendMessage(msg);
+        mSensors.unregisterListener(this);
     }
 
     /**
