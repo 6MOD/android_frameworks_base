@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (C) 2016 The 6 MOD Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -360,6 +361,11 @@ public class NotificationPanelView extends PanelView implements
             mKeyguardStatusView.setAlpha(1f);
         }
     };
+
+    public void onProximityResult(boolean J) {
+        setVisibility(J ? View.GONE : View.VISIBLE);
+        mKeyguardBottomArea.setVisibility(J ? View.GONE : View.VISIBLE);
+    }
 
     public NotificationPanelView(Context context, AttributeSet attrs) {
         super(context, attrs);
