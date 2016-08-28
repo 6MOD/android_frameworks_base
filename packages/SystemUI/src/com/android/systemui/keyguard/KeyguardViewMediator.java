@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
- * Copyright (C) 2016 The 6 MOD Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -138,7 +137,7 @@ import static android.provider.Settings.System.SCREEN_OFF_TIMEOUT;
  * directly to the keyguard UI is posted to a {@link android.os.Handler} to ensure it is taken on the UI
  * thread of the keyguard.
  */
-public class KeyguardViewMediator extends SystemUI implements SensorEventListener {
+public class KeyguardViewMediator extends SystemUI {
     private static final int KEYGUARD_DISPLAY_TIMEOUT_DELAY_DEFAULT = 30000;
     private static final long KEYGUARD_DONE_PENDING_TIMEOUT_MS = 3000;
 
@@ -362,6 +361,18 @@ public class KeyguardViewMediator extends SystemUI implements SensorEventListene
 
     public SensorManager mSensors;
     public Sensor mProximitySensor;
+    private SensorEventListener mKeyguardProximity = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            if (event.sensor.getType() == Sensor.TYPE_PROXIMITY && !mStatusBar.isDozing()) {
+                float distance = event.values[0];
+                mStatusBar.mNotificationPanel.onProximityResult(distance < mProximitySensor.getMaximumRange() && distance == 0);
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+    };
 
     public static class LockscreenEnabledSettingsObserver extends UserContentObserver {
 
@@ -960,7 +971,7 @@ public class KeyguardViewMediator extends SystemUI implements SensorEventListene
                     && mLockPatternUtils.isSecure(KeyguardUpdateMonitor.getCurrentUser())) {
                 doKeyguardLaterLocked();
             }
-            mSensors.registerListener(this, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
+            mSensors.registerListener(mKeyguardProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
         }
     }
 
@@ -974,17 +985,6 @@ public class KeyguardViewMediator extends SystemUI implements SensorEventListene
             }
         }
     }
-
-    @Override
-    public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
-            float distance = event.values[0];
-            mStatusBar.mNotificationPanel.onProximityResult(distance < mProximitySensor.getMaximumRange() && distance == 0);
-        }
-    }
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
     /**
      * Set the internal keyguard enabled state. This allows SystemUI to disable the lockscreen,
@@ -1471,7 +1471,7 @@ public class KeyguardViewMediator extends SystemUI implements SensorEventListene
         EventLog.writeEvent(70000, 2);
         Message msg = mHandler.obtainMessage(KEYGUARD_DONE, authenticated ? 1 : 0);
         mHandler.sendMessage(msg);
-        mSensors.unregisterListener(this);
+        mSensors.unregisterListener(mKeyguardProximity);
     }
 
     /**
