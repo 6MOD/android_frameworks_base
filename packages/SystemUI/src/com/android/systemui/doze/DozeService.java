@@ -45,7 +45,7 @@ import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.Date;
 
-public class DozeService extends DreamService implements SensorEventListener {
+public class DozeService extends DreamService {
     private static final String TAG = "DozeService";
     private static final boolean DEBUG = Log.isLoggable(TAG, Log.DEBUG);
 
@@ -70,8 +70,41 @@ public class DozeService extends DreamService implements SensorEventListener {
     private final DozeParameters mDozeParameters = new DozeParameters(mContext);
 
     private DozeHost mHost;
+    private boolean mDozeFirst;
     private SensorManager mSensors;
     private Sensor mProximitySensor;
+
+    private SensorEventListener mDozeProximity = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
+                float distance = event.values[0];
+                boolean active = (distance >= mProximitySensor.getMaximumRange() && !mDozeFirst);
+                requestPulse(active);
+                mDozeFirst = false;
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+    };
+
+    private SensorEventListener mDozeNotificationProximity = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
+                float distance = event.values[0];
+                if (distance >= mProximitySensor.getMaximumRange()) {
+                    showDozeing();
+                }
+                mSensors.unregisterListener(this);
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+    };
+
     private PowerManager mPowerManager;
     private PowerManager.WakeLock mWakeLock;
     private AlarmManager mAlarmManager;
@@ -83,7 +116,6 @@ public class DozeService extends DreamService implements SensorEventListener {
     private boolean mNotificationLightOn;
     private boolean mPowerSaveActive;
     private boolean mCarMode;
-    private boolean mFirst;
     private long mNotificationPulseTime;
     private long mLastScheduleResetTime;
     private long mEarliestPulseDueToLight;
@@ -125,6 +157,7 @@ public class DozeService extends DreamService implements SensorEventListener {
         setWindowless(true);
 
         mSensors = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
+        mProximitySensor = mSensors.getDefaultSensor(Sensor.TYPE_PROXIMITY);
         mPowerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
         mWakeLock = mPowerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
         mWakeLock.setReferenceCounted(true);
@@ -149,9 +182,8 @@ public class DozeService extends DreamService implements SensorEventListener {
             return;
         }
 
-        mFirst = true;
-        mProximitySensor = mSensors.getDefaultSensor(Sensor.TYPE_PROXIMITY);
-        mSensors.registerListener(this, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
+        mDozeFirst = true;
+        mSensors.registerListener(mDozeProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
 
         mPowerSaveActive = mHost.isPowerSaveActive();
         mCarMode = mUiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_CAR;
@@ -189,19 +221,6 @@ public class DozeService extends DreamService implements SensorEventListener {
     }
 
     @Override
-    public void onSensorChanged(SensorEvent event) {
-        if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
-            float distance = event.values[0];
-            boolean active = (distance >= mProximitySensor.getMaximumRange() && !mFirst);
-            requestPulse(active, true);
-            mFirst = false;
-        }
-    }
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int accuracy) {}
-
-    @Override
     public void onDreamingStopped() {
         if (DEBUG) Log.d(mTag, "onDreamingStopped isDozing=" + isDozing());
         super.onDreamingStopped();
@@ -210,32 +229,22 @@ public class DozeService extends DreamService implements SensorEventListener {
             return;
         }
 
-        mFirst = true;
+        mSensors.unregisterListener(mDozeProximity);
+        mSensors.unregisterListener(mDozeNotificationProximity);
+
+        mDozeFirst = true;
 
         mDreaming = false;
         listenForPulseSignals(false);
 
         // Tell the host that it's over.
         mHost.stopDozing();
-
-        mSensors.unregisterListener(this);
     }
 
-    private void requestPulse(boolean active, boolean asensor) {
-        if (!active) return;
-
-        // perform b proximity check
-        if (!asensor) {
-            new NotificationProximityCheck() {
-                @Override
-                public void onProximityResult() {
-                    showDozeing();
-                }
-            }.check();
-            return;
+    private void requestPulse(boolean active) {
+        if (active) {
+            showDozeing();
         }
-
-        showDozeing();
     }
 
     private void showDozeing() {
@@ -357,7 +366,7 @@ public class DozeService extends DreamService implements SensorEventListener {
         mNotificationPulseTime = notificationTimeMs;
         if (pulseImmediately) {
             DozeLog.traceNotificationPulse(0);
-            requestPulse(true, false);
+            mSensors.registerListener(mDozeNotificationProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
         }
         // schedule the rest of the pulses
         rescheduleNotificationPulse(true /*predicate*/);
@@ -407,13 +416,13 @@ public class DozeService extends DreamService implements SensorEventListener {
         public void onReceive(Context context, Intent intent) {
             if (PULSE_ACTION.equals(intent.getAction())) {
                 if (DEBUG) Log.d(mTag, "Received pulse intent");
-                requestPulse(true, false);
+                mSensors.registerListener(mDozeNotificationProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
             }
             if (NOTIFICATION_PULSE_ACTION.equals(intent.getAction())) {
                 final long instance = intent.getLongExtra(EXTRA_INSTANCE, -1);
                 if (DEBUG) Log.d(mTag, "Received notification pulse intent instance=" + instance);
                 DozeLog.traceNotificationPulse(instance);
-                requestPulse(true, false);
+                mSensors.registerListener(mDozeNotificationProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
                 rescheduleNotificationPulse(mNotificationLightOn);
             }
             if (UiModeManager.ACTION_ENTER_CAR_MODE.equals(intent.getAction())) {
@@ -456,27 +465,4 @@ public class DozeService extends DreamService implements SensorEventListener {
             }
         }
     };
-
-    private abstract class NotificationProximityCheck implements SensorEventListener {
-        abstract public void onProximityResult();
-
-        public void check() {
-            final Sensor sensor = mSensors.getDefaultSensor(Sensor.TYPE_PROXIMITY);
-            mSensors.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL);
-        }
-
-        @Override
-        public void onSensorChanged(SensorEvent event) {
-            if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
-                float distance = event.values[0];
-                if (distance >= mProximitySensor.getMaximumRange()) {
-                    onProximityResult();
-                }
-                mSensors.unregisterListener(this);
-            }
-        }
-
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {}
-    }
 }
