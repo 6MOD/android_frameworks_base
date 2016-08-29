@@ -18,6 +18,7 @@ package com.android.systemui.recents;
 
 import android.app.Activity;
 import android.app.ActivityOptions;
+import android.app.ActivityManager;
 import android.app.SearchManager;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProviderInfo;
@@ -25,12 +26,16 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.NameNotFoundException;
+import android.content.pm.PackageInfo;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewStub;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.android.internal.logging.MetricsLogger;
@@ -52,6 +57,7 @@ import cyanogenmod.providers.CMSettings;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The main Recents activity that is started from AlternateRecentsComponent.
@@ -60,15 +66,18 @@ public class RecentsActivity extends Activity implements RecentsView.RecentsView
         RecentsAppWidgetHost.RecentsAppWidgetHostCallbacks,
         DebugOverlayView.DebugOverlayViewCallbacks {
 
+    private ActivityManager am;
+
     RecentsConfiguration mConfig;
     long mLastTabKeyEventTime;
 
     // Top level views
     RecentsView mRecentsView;
     SystemBarScrimViews mScrimViews;
-    ViewStub mEmptyViewStub;
     ViewStub mDebugOverlayStub;
-    View mEmptyView;
+    View mBackupServiceView;
+    View mBackupServiceButtonView;
+    TextView mBackupServiceTextView;
     DebugOverlayView mDebugOverlay;
 
     // Resize task debug
@@ -251,22 +260,11 @@ public class RecentsActivity extends Activity implements RecentsView.RecentsView
 
         // Update the top level view's visibilities
         if (mConfig.launchedWithNoRecentTasks) {
-            if (mEmptyView == null) {
-                mEmptyView = mEmptyViewStub.inflate();
-            }
-            mEmptyView.setVisibility(View.VISIBLE);
-            mEmptyView.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    dismissRecentsToHome(true);
-                }
-            });
+            mBackupServiceView.setVisibility(View.VISIBLE);
             mRecentsView.setSearchBarVisibility(View.GONE);
         } else {
-            if (mEmptyView != null) {
-                mEmptyView.setVisibility(View.GONE);
-                mEmptyView.setOnClickListener(null);
-            }
+            mBackupServiceView.setVisibility(View.GONE);
+            mBackupServiceView.setOnClickListener(null);
             if (!mConfig.searchBarEnabled) {
                 mRecentsView.setSearchBarVisibility(View.GONE);
             } else {
@@ -302,6 +300,23 @@ public class RecentsActivity extends Activity implements RecentsView.RecentsView
             taskCount += stack.getTaskCount();
         }
         MetricsLogger.histogram(this, "overview_task_count", taskCount);
+    }
+
+    private void dismissAllBackupServices() {
+        int defaultNum = 1000;
+        List<ActivityManager.RunningServiceInfo> runServiceList = am.getRunningServices(defaultNum);
+        PackageManager manager = getPackageManager();
+        for (ActivityManager.RunningServiceInfo runServiceInfo : runServiceList) {
+             try {
+                 PackageInfo packageInfo = manager.getPackageInfo(runServiceInfo.service.getPackageName(), PackageManager.GET_CONFIGURATIONS);
+                 if((packageInfo.applicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0) {
+                    am.forceStopPackage(runServiceInfo.service.getPackageName());
+                 }
+             } catch (NameNotFoundException e) {
+                 e.printStackTrace();
+             }
+        }
+        dismissRecentsToHome(true);
     }
 
     /** Dismisses recents if we are already visible and the intent is to toggle the recents view */
@@ -379,6 +394,8 @@ public class RecentsActivity extends Activity implements RecentsView.RecentsView
         SystemServicesProxy ssp = RecentsTaskLoader.getInstance().getSystemServicesProxy();
         mConfig = RecentsConfiguration.reinitialize(this, ssp);
 
+        am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+
         // Initialize the widget host (the host id is static and does not change)
         mAppWidgetHost = new RecentsAppWidgetHost(this, Constants.Values.App.AppWidgetHostId);
 
@@ -389,7 +406,22 @@ public class RecentsActivity extends Activity implements RecentsView.RecentsView
         mRecentsView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
-        mEmptyViewStub = (ViewStub) findViewById(R.id.empty_view_stub);
+        mBackupServiceView = (View) findViewById(R.id.backup_services);
+        mBackupServiceButtonView = (View) findViewById(R.id.dismiss_button);
+        mBackupServiceTextView = (TextView) findViewById(R.id.backup_services_text);
+            mBackupServiceView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    dismissRecentsToHome(true);
+                }
+            });
+            mBackupServiceButtonView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    dismissAllBackupServices();
+                }
+            });
+        mBackupServiceTextView.setText("Back-up Services");
         mDebugOverlayStub = (ViewStub) findViewById(R.id.debug_overlay_stub);
         mScrimViews = new SystemBarScrimViews(this, mConfig);
         inflateDebugOverlay();
@@ -652,7 +684,7 @@ public class RecentsActivity extends Activity implements RecentsView.RecentsView
     @Override
     public void onExitToHomeAnimationTriggered() {
         // Animate the SystemUI scrim views out
-        mScrimViews.startExitRecentsAnimation();
+        mBackupServiceView.setVisibility(View.VISIBLE);
     }
 
     @Override
@@ -662,12 +694,12 @@ public class RecentsActivity extends Activity implements RecentsView.RecentsView
     @Override
     public void onTaskLaunchFailed() {
         // Return to Home
-        dismissRecentsToHomeRaw(true);
+        mBackupServiceView.setVisibility(View.VISIBLE);
     }
 
     @Override
     public void onAllTaskViewsDismissed() {
-        mFinishLaunchHomeRunnable.run();
+        mBackupServiceView.setVisibility(View.VISIBLE);
     }
 
     @Override
