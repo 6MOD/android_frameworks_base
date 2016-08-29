@@ -364,9 +364,10 @@ public class KeyguardViewMediator extends SystemUI {
     private SensorEventListener mKeyguardProximity = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent event) {
-            if (event.sensor.getType() == Sensor.TYPE_PROXIMITY && !mStatusBar.isDozing()) {
+            if (event.sensor.getType() == Sensor.TYPE_PROXIMITY) {
                 float distance = event.values[0];
                 mStatusBar.mNotificationPanel.onProximityResult(distance < mProximitySensor.getMaximumRange() && distance == 0);
+                mStatusBarKeyguardViewManager.mBouncer.onProximityResult(distance < mProximitySensor.getMaximumRange() && distance == 0);
             }
         }
 
@@ -662,6 +663,7 @@ public class KeyguardViewMediator extends SystemUI {
         mContext.registerReceiver(mBroadcastReceiver, new IntentFilter(KEYGUARD_SERVICE_ACTION_STATE_CHANGE),
                 android.Manifest.permission.CONTROL_KEYGUARD, null);
         mContext.registerReceiver(mBroadcastReceiver, new IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED));
+        mContext.registerReceiver(mBroadcastReceiver, new IntentFilter(Intent.ACTION_SCREEN_OFF));
 
         mKeyguardDisplayManager = new KeyguardDisplayManager(mContext);
 
@@ -961,6 +963,14 @@ public class KeyguardViewMediator extends SystemUI {
         return mCryptKeeperEnabled;
     }
 
+    public void registerListener() {
+        mSensors.registerListener(mKeyguardProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
+    }
+
+    public void unregisterListener() {
+        mSensors.unregisterListener(mKeyguardProximity);
+    }
+
     /**
      * A dream started.  We should lock after the usual screen-off lock timeout but only
      * if there is a secure lock pattern.
@@ -971,7 +981,6 @@ public class KeyguardViewMediator extends SystemUI {
                     && mLockPatternUtils.isSecure(KeyguardUpdateMonitor.getCurrentUser())) {
                 doKeyguardLaterLocked();
             }
-            mSensors.registerListener(mKeyguardProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
         }
     }
 
@@ -1439,6 +1448,8 @@ public class KeyguardViewMediator extends SystemUI {
     private final BroadcastReceiver mBroadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            boolean enabled = Settings.Secure.getIntForUser(mContext.getContentResolver(),
+                  Settings.Secure.DOZE_ENABLED, 1, UserHandle.USER_CURRENT) != 0;
             if (DELAYED_KEYGUARD_ACTION.equals(intent.getAction())) {
                 final int sequence = intent.getIntExtra("seq", 0);
                 if (DEBUG) Log.d(TAG, "received DELAYED_KEYGUARD_ACTION with seq = "
@@ -1462,6 +1473,8 @@ public class KeyguardViewMediator extends SystemUI {
             } else if (TelephonyManager.ACTION_PHONE_STATE_CHANGED.equals(intent.getAction())) {
                 mPhoneState = intent.getStringExtra(TelephonyManager.EXTRA_STATE);
                 if (DEBUG) Log.d(TAG, "phone state change, new state: " + mPhoneState);
+            } else if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction()) && !enabled) {
+                registerListener();
             }
         }
     };

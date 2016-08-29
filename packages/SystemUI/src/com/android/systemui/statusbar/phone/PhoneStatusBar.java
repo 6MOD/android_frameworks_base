@@ -597,6 +597,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
     private int mNavigationBarMode;
 
     private ViewMediatorCallback mKeyguardViewMediatorCallback;
+    public KeyguardViewMediator keyguardViewMediator;
     private ScrimController mScrimController;
     private DozeScrimController mDozeScrimController;
 
@@ -1457,7 +1458,7 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
     }
 
     private void startKeyguard() {
-        KeyguardViewMediator keyguardViewMediator = getComponent(KeyguardViewMediator.class);
+        keyguardViewMediator = getComponent(KeyguardViewMediator.class);
         mFingerprintUnlockController = new FingerprintUnlockController(mContext,
                 mStatusBarWindowManager, mDozeScrimController, keyguardViewMediator,
                 mScrimController, this);

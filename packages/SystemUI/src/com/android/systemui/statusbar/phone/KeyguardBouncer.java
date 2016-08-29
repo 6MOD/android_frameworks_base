@@ -65,6 +65,10 @@ public class KeyguardBouncer {
                 }
             };
 
+    public void onProximityResult(boolean J) {
+        mKeyguardView.setVisibility(J ? View.GONE : View.VISIBLE);
+    }
+
     public KeyguardBouncer(Context context, ViewMediatorCallback callback,
             LockPatternUtils lockPatternUtils, StatusBarWindowManager windowManager,
             ViewGroup container, PhoneStatusBar phoneStatusBar) {

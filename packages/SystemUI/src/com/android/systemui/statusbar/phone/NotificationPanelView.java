@@ -362,9 +362,15 @@ public class NotificationPanelView extends PanelView implements
         }
     };
 
+    private View mPriventView;
+    private View mContentView;
+    private TextView mPriventTextView;
+
     public void onProximityResult(boolean J) {
-        setVisibility(J ? View.GONE : View.VISIBLE);
-        mKeyguardBottomArea.setVisibility(J ? View.GONE : View.VISIBLE);
+        mContentView.setVisibility(J ? View.GONE : View.VISIBLE);
+        mPriventTextView.setText("Do not block the phone at the top of the blue area !");
+        mPriventView.setVisibility(J ? View.VISIBLE : View.GONE);
+        mKeyguardBottomArea.setVisibility(J ? View.GONE : mDozing ? View.GONE : View.VISIBLE);
     }
 
     public NotificationPanelView(Context context, AttributeSet attrs) {
@@ -458,6 +464,9 @@ public class NotificationPanelView extends PanelView implements
         super.onFinishInflate();
         mHeader = (StatusBarHeaderView) findViewById(R.id.header);
         mHeader.setOnClickListener(this);
+        mContentView = (View) findViewById(R.id.content_panel);
+        mPriventView = (View) findViewById(R.id.privent);
+        mPriventTextView = (TextView) findViewById(R.id.privent_mode_text);
         mKeyguardStatusBar = (KeyguardStatusBarView) findViewById(R.id.keyguard_header);
         mKeyguardStatusView = (KeyguardStatusView) findViewById(R.id.keyguard_status_view);
         mQsContainer = (QSContainer) findViewById(R.id.quick_settings_container);
@@ -2591,9 +2600,12 @@ public class NotificationPanelView extends PanelView implements
         if (mDozing) {
             mKeyguardStatusBar.setVisibility(View.INVISIBLE);
             mKeyguardBottomArea.setVisibility(View.INVISIBLE);
+            mStatusBar.keyguardViewMediator.unregisterListener();
+            onProximityResult(false);
         } else {
             mKeyguardBottomArea.setVisibility(View.VISIBLE);
             mKeyguardStatusBar.setVisibility(View.VISIBLE);
+            mStatusBar.keyguardViewMediator.registerListener();
             if (animate) {
                 animateKeyguardStatusBarIn(DOZE_ANIMATION_DURATION);
                 mKeyguardBottomArea.startFinishDozeAnimation();

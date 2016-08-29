@@ -70,7 +70,7 @@ public class StatusBarKeyguardViewManager {
 
     private boolean mDeviceInteractive = false;
     private boolean mScreenTurnedOn;
-    private KeyguardBouncer mBouncer;
+    public KeyguardBouncer mBouncer;
     private boolean mShowing;
     private boolean mOccluded;
 
