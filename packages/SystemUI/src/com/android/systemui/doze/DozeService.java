@@ -33,6 +33,7 @@ import android.media.AudioAttributes;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.Vibrator;
+import android.provider.Settings;
 import android.service.dreams.DreamService;
 import android.util.Log;
 import android.view.Display;
@@ -182,8 +183,10 @@ public class DozeService extends DreamService {
             return;
         }
 
-        mDozeFirst = true;
-        mSensors.registerListener(mDozeProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
+        if (Settings.Secure.getInt(getContentResolver(), Settings.Secure.DOZE_QUICK_LOOK_ENABLED, 0) == 1) {
+            mDozeFirst = true;
+            mSensors.registerListener(mDozeProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
 
         mPowerSaveActive = mHost.isPowerSaveActive();
         mCarMode = mUiModeManager.getCurrentModeType() == Configuration.UI_MODE_TYPE_CAR;
@@ -229,10 +232,11 @@ public class DozeService extends DreamService {
             return;
         }
 
-        mSensors.unregisterListener(mDozeProximity);
+        if (Settings.Secure.getInt(getContentResolver(), Settings.Secure.DOZE_QUICK_LOOK_ENABLED, 0) == 1) {
+            mSensors.unregisterListener(mDozeProximity);
+            mDozeFirst = true;
+        }
         mSensors.unregisterListener(mDozeNotificationProximity);
-
-        mDozeFirst = true;
 
         mDreaming = false;
         listenForPulseSignals(false);

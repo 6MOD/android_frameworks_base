@@ -964,11 +964,15 @@ public class KeyguardViewMediator extends SystemUI {
     }
 
     public void registerListener() {
-        mSensors.registerListener(mKeyguardProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
+        if (CMSettings.System.getInt(mContext.getContentResolver(), CMSettings.System.PROXIMITY_ON_WAKE, 0) == 1) {
+            mSensors.registerListener(mKeyguardProximity, mProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
     }
 
     public void unregisterListener() {
-        mSensors.unregisterListener(mKeyguardProximity);
+        if (CMSettings.System.getInt(mContext.getContentResolver(), CMSettings.System.PROXIMITY_ON_WAKE, 0) == 1) {
+            mSensors.unregisterListener(mKeyguardProximity);
+        }
     }
 
     /**
@@ -1474,7 +1478,9 @@ public class KeyguardViewMediator extends SystemUI {
                 mPhoneState = intent.getStringExtra(TelephonyManager.EXTRA_STATE);
                 if (DEBUG) Log.d(TAG, "phone state change, new state: " + mPhoneState);
             } else if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction()) && !enabled) {
-                registerListener();
+                if (CMSettings.System.getInt(mContext.getContentResolver(), CMSettings.System.PROXIMITY_ON_WAKE, 0) == 1) {
+                    registerListener();
+                }
             }
         }
     };
@@ -1484,7 +1490,9 @@ public class KeyguardViewMediator extends SystemUI {
         EventLog.writeEvent(70000, 2);
         Message msg = mHandler.obtainMessage(KEYGUARD_DONE, authenticated ? 1 : 0);
         mHandler.sendMessage(msg);
-        mSensors.unregisterListener(mKeyguardProximity);
+        if (CMSettings.System.getInt(mContext.getContentResolver(), CMSettings.System.PROXIMITY_ON_WAKE, 0) == 1) {
+            mSensors.unregisterListener(mKeyguardProximity);
+        }
     }
 
     /**
